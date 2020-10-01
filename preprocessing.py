@@ -1,13 +1,14 @@
 import numpy as np
 import scipy.signal as signal
 
-class StepPoint():
+
+class StepPoint:
     def __init__(self, accelerate_value, direction_vector, real_pos):
         self.acc = accelerate_value
         self.dv = direction_vector
         self.rp = real_pos
 
-        self.step_points  = []
+        self.step_points = []
         self.compute()
 
     def get_step_points(self):
@@ -82,17 +83,46 @@ class StepPoint():
 
         return step_d
 
+    def getD(self, dv):
+        size = np.size(dv, 0)
+        directions = np.zeros((size, 2))
+        for i in range(size):
+            di = directions[i, :]
+            time, vector = di[0], di[1:]
+
+            azimuth = self.get_orientation(vector)
+            directions[i, :] = time, (-azimuth) % (2 * np.pi)
+        return directions
+
+    def adjust(self, step_points, rp):
+        step_points = self.time_split_data(step_points, rp[:, 0])
+        if len(step_points) != rp.shape[0] - 1:
+            del step_points[-1]
+
+        size = len(step_points)
+        adjust_step_points = np.zeros((0, 3))
+
+        for i in range(size):
+            start, end = rp[i], rp[i + 1]
+            adjust_step_point = self.adjust_point(step_points[i], start, end)
+            if i > 0:
+                adjust_step_points = np.append(adjust_step_points, adjust_step_point[1:], axis=0)
+            else:
+                adjust_step_points = np.append(adjust_step_points, adjust_step_point, axis=0)
+
+        return adjust_step_points
+
     @staticmethod
     def getStepLen(step_acc):
         size = step_acc.shape[0]
-        step_lens = np.zeros((size,2))
-        times = np.zeros((size-1, ))
+        step_lens = np.zeros((size, 2))
+        times = np.zeros((size - 1,))
         step_lens[:, 0] = step_acc[:, 0]
         times_temp = np.zeros((0,))
 
         # cal step period
         for i in range(times.shape[0]):
-            stepi_t = step_acc[i+1, 0] - step_acc[i, 0] / 1000
+            stepi_t = step_acc[i + 1, 0] - step_acc[i, 0] / 1000
             times_temp = np.append(times_temp, [stepi_t])
             if times_temp.shape[0] > 2:
                 times_temp = np.delete(times_temp, [0])
@@ -105,8 +135,8 @@ class StepPoint():
         k = np.zeros(size)
         k[0] = k0
         for i in range(times.shape[0]):
-            k[i+1] = np.max([(para_a0 + para_a1 / times[i] + para_a2 * step_acc[i, 3]), kmin])
-            k[i+1] = np.min([k[i+1], kmax]) * (k0 / kmin)
+            k[i + 1] = np.max([(para_a0 + para_a1 / times[i] + para_a2 * step_acc[i, 3]), kmin])
+            k[i + 1] = np.min([k[i + 1], kmax]) * (k0 / kmin)
 
         # cal step len
         step_lens[:, 1] = np.max([(step_acc[:, 1] - step_acc[:, 2]), np.ones((size,))], axis=0) ** 0.25 * k
@@ -124,9 +154,6 @@ class StepPoint():
             step_points[i, 1] = step_lengths[i, 2] * np.cos(step_directions[i, 1])
 
         return step_points
-
-    def adjust(self, step_points, rp):
-        pass
 
     @staticmethod
     def filterInit(window_size):
@@ -167,7 +194,8 @@ class StepPoint():
 
     @staticmethod
     def update_acc_max(acc_max, f_acci_m, acci_time, state):
-        if state == 0 or (state == 1) and ((acci_time - acc_max[0]) <= 250) and (f_acci_m > acc_max[1]) or (acci_time - acc_max[0]) > 250:
+        if state == 0 or (state == 1) and ((acci_time - acc_max[0]) <= 250) and (f_acci_m > acc_max[1]) or (
+                acci_time - acc_max[0]) > 250:
             acc_max[:] = acci_time, f_acci_m
 
         return acc_max
@@ -183,17 +211,6 @@ class StepPoint():
             acc_min[:] = acci_time, f_acci_m
 
         return acc_min, flag, state
-
-    def getD(self, dv):
-        size = np.size(dv,0)
-        directions = np.zeros((size,2))
-        for i in range(size):
-            di = directions[i, :]
-            time, vector = di[0], di[1:]
-
-            azimuth = self.get_orientation(vector)
-            directions[i, :] = time, (-azimuth) % (2*np.pi)
-        return directions
 
     @staticmethod
     def get_orientation(rotation):
@@ -265,3 +282,48 @@ class StepPoint():
             orientation[2] = np.arctan2(-flat_R[8], flat_R[10])
 
         return orientation[0]
+
+    @staticmethod
+    def time_split_data(datas, times):
+        datas_time = datas[:, 0]
+        times = np.unique(times)
+        size = times.shape[0]
+        _datas = []
+
+        start = 0
+
+        for i in range(size):
+            end = np.searchsorted(datas_time, times[i], side='right')
+            if end == start:
+                continue
+            _datas.append(datas[start:end, :].copy())
+            start = end
+
+        _datas.append(datas[start:, :].copy())
+        return _datas
+
+    @staticmethod
+    def adjust_point(point, start, end):
+        pos = np.zeros(point.shape)
+        pos[:, 0], pos[0, 1:3] = point[:, 0], point[0, 1:3] + start[1:3]
+        for i in range(1, point.shape[0]):
+            pos[i, 1:3] = pos[i - 1, 1:3] + point[i, 1:3]
+        pos = np.insert(pos, 0, start, axis=0)
+
+        old = pos[:, 1:3]
+        A = pos[0, 1:3]
+        B = end[1:3]
+        Bp = pos[-1, 1:3]
+        new_xy = np.append(np.zeros((0, 2)), [A], 0)
+
+        angle_BpAB = np.arctan2(Bp[1] - A[1], Bp[0] - A[0]) - np.arctan2(B[1] - A[1], B[0] - A[0])
+        AB = np.sqrt(np.sum((B - A) ** 2))
+        ABp = np.sqrt(np.sum((Bp - A) ** 2))
+
+        for i in range(1, np.size(old, 0)):
+            angle_CAX = np.arctan2(old[i, 1] - A[1], old[i, 0] - A[0]) - angle_BpAB
+            AC = np.sqrt(np.sum((old[i, :] - A) ** 2)) * AB / ABp
+            delta_C = np.array([AC * np.cos(angle_CAX), AC * np.sin(angle_CAX)])
+            new_xy = np.append(new_xy, [delta_C + A], 0)
+
+        return np.column_stack((pos[:, 0], new_xy))
