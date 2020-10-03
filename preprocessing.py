@@ -2,6 +2,7 @@ import numpy as np
 import scipy.signal as signal
 
 
+# get points of each step
 class StepPoint:
     def __init__(self, accelerate_value, direction_vector, real_pos):
         self.acc = accelerate_value
@@ -327,3 +328,96 @@ class StepPoint:
             new_xy = np.append(new_xy, [delta_C + A], 0)
 
         return np.column_stack((pos[:, 0], new_xy))
+
+
+# get mag and wifi info of each step
+class MagAndWifi:
+
+    def __init__(self, files):
+        self.files = files
+        self.dataMap = None
+        self.mag = None
+        self.wifi = None
+        self.preProcess()
+
+    def preProcess(self):
+        for f in self.files:
+            # TODO: read from dataClass
+            print(f)
+            raw_datas = {
+                "acc":"",
+                "dv":"",
+                "rp":"",
+                "mag":"",
+                "wifi":""
+            }
+            acc = raw_datas.acc
+            direciton = raw_datas.dv
+            real_pos = raw_datas.rp
+            mag = raw_datas.mag
+            wifi = raw_datas.wifi
+
+            step_points = StepPoint(acc, direciton, real_pos).get_step_points()
+            self.dataToMap(mag, step_points, "mag")
+            if wifi.size > 0:
+                self.dataToMap(wifi, step_points, "wifi")
+
+    def dataToMap(self, datas, step_points, name):
+        time_split_data = StepPoint.time_split_data(datas, datas[:,0])
+        for data in time_split_data:
+            idx = np.argmin(np.abs(step_points[:, 0] - float(data[0, 0])))
+            point_key = tuple(step_points[idx, 1:3])
+
+            if point_key not in self.dataMap:
+                self.dataMap[point_key] = {
+                    'mag': np.zeros((0, 4)),
+                    'wifi': np.zeros((0, 5)),
+                }
+
+            self.dataMap[point_key][name] = np.append(self.dataMap[point_key][name], data, axis=0)
+
+    def magProcess(self):
+        for key in self.dataMap:
+            mag = self.dataMap[key]['mag']
+            mag_val = np.mean(np.sqrt(np.sum(mag[:, 1:4] ** 2, axis=1)))
+            self.mag[key] = mag_val
+
+    def getMagKeyVal(self):
+        if not self.mag:
+            self.magProcess()
+
+        pos = np.array(list(self.mag.keys()))
+        vals = np.array(list(self.mag.values()))
+
+        return pos, vals
+
+    def wifiProcess(self):
+        for key in self.dataMap:
+            wifi = self.dataMap[key]['wifi']
+
+            for data in wifi:
+                bssid, rssi = data[2], int(data[3])
+
+                if bssid not in self.wifi:
+                    rssi_point = {key: np.array([rssi, 1])}
+                else:
+                    rssi_point = self.wifi[bssid]
+                    if key not in rssi_point:
+                        rssi_point[key] = np.array([rssi, 1])
+                    else:
+                        count = rssi_point[key][1] + 1
+                        val = (rssi_point[key][0] * (count-1) + rssi) / count
+
+                        rssi_point[key][1] = count
+                        rssi_point[key][0] = val
+
+                self.wifi[bssid] = rssi_point
+
+    def getWifiKeyVal(self, rssi):
+        if not self.wifi:
+            self.wifiProcess()
+
+        pos = np.array(list(self.wifi[rssi].keys()))
+        vals = np.array(list(self.wifi[rssi].values()))
+
+        return pos, vals
