@@ -1,8 +1,7 @@
 import numpy as np
 import scipy.signal as signal
+from io_f import read_data_file
 
-
-# get points of each step
 class StepPoint:
     def __init__(self, accelerate_value, direction_vector, real_pos):
         self.acc = accelerate_value
@@ -43,6 +42,7 @@ class StepPoint:
         acc_max = np.zeros((2,))
         acc_min = np.zeros((2,))
         fb, fa, zf = self.filterInit(window_size)
+        acc_m_win = np.zeros((window_size, 1))
 
         for i in range(size):
             acci = acc[i, :]
@@ -53,7 +53,7 @@ class StepPoint:
             f_acci_m, zf = signal.lfilter(fb, fa, [acci_m], zi=zf)
             f_acci_m = f_acci_m[0]
 
-            acc_binarys, acc_m_pre, acc_std = self.update_acc_binarys(f_acci_m, window_size, acc_binarys, acc_m_pre)
+            acc_binarys, acc_m_pre, acc_std, acc_m_win = self.update_acc_binarys(f_acci_m, acc_m_win, acc_binarys, acc_m_pre)
             if acc_binarys[-1] == 0 and acc_binarys[-2] == 1:
                 acc_max = self.update_acc_max(acc_max, f_acci_m, acci_time, state)
                 state = 1
@@ -75,9 +75,12 @@ class StepPoint:
         step_d = np.zeros((ltime, 2))
         time_idx = 0
         for i in range(ld):
-            if time_idx < ltime and directions[i, 0] == time[time_idx]:
-                step_d[time_idx, :] = directions[i, :]
-                time_idx += 1
+            if time_idx < ltime:
+                if directions[i, 0] == time[time_idx]:
+                    step_d[time_idx, :] = directions[i, :]
+                    time_idx += 1
+                else:
+                    continue
             else:
                 break
         assert time_idx == ltime
@@ -88,7 +91,7 @@ class StepPoint:
         size = np.size(dv, 0)
         directions = np.zeros((size, 2))
         for i in range(size):
-            di = directions[i, :]
+            di = dv[i, :]
             time, vector = di[0], di[1:]
 
             azimuth = self.get_orientation(vector)
@@ -152,7 +155,7 @@ class StepPoint:
         for i in range(size):
             step_points[i, 0] = step_lengths[i, 0]
             step_points[i, 1] = -step_lengths[i, 1] * np.sin(step_directions[i, 1])
-            step_points[i, 1] = step_lengths[i, 2] * np.cos(step_directions[i, 1])
+            step_points[i, 2] = step_lengths[i, 1] * np.cos(step_directions[i, 1])
 
         return step_points
 
@@ -170,10 +173,9 @@ class StepPoint:
         return fb, fa, zf
 
     @staticmethod
-    def update_acc_binarys(f_acci_m, window_size, acc_binarys, acc_m_pre):
+    def update_acc_binarys(f_acci_m, acc_m_win, acc_binarys, acc_m_pre):
         # acceleration magnitudes window
         # find steps based on this
-        acc_m_win = np.zeros((window_size, 1))
         acc_m_win = np.append(acc_m_win, [f_acci_m])
         acc_m_win = np.delete(acc_m_win, 0)
         mean_gravity = np.mean(acc_m_win)
@@ -187,11 +189,11 @@ class StepPoint:
         acc_m_pre = acc_mf_detrend
 
         if acc_mf_detrend > peak:
-            return np.delete(np.append(acc_binarys, [1]), 0)
+            return np.delete(np.append(acc_binarys, [1]), 0), acc_m_pre, acc_std,acc_m_win
         if acc_mf_detrend < valley:
-            return np.delete(np.append(acc_binarys, [-1]), 0)
+            return np.delete(np.append(acc_binarys, [-1]), 0), acc_m_pre, acc_std,acc_m_win
 
-        return np.delete(np.append(acc_binarys, [0]), 0), acc_m_pre, acc_std
+        return np.delete(np.append(acc_binarys, [0]), 0), acc_m_pre, acc_std,acc_m_win
 
     @staticmethod
     def update_acc_max(acc_max, f_acci_m, acci_time, state):
@@ -215,7 +217,7 @@ class StepPoint:
 
     @staticmethod
     def get_orientation(rotation):
-        q1, q2, q3 = rotation[:3]
+        q1, q2, q3 = rotation[0:3]
         if rotation.size >= 4:
             q0 = rotation[3]
         else:
@@ -299,8 +301,8 @@ class StepPoint:
                 continue
             _datas.append(datas[start:end, :].copy())
             start = end
-
-        _datas.append(datas[start:, :].copy())
+        if start < datas.shape[0]:
+            _datas.append(datas[start:, :].copy())
         return _datas
 
     @staticmethod
@@ -335,26 +337,19 @@ class MagAndWifi:
 
     def __init__(self, files):
         self.files = files
-        self.dataMap = None
-        self.mag = None
-        self.wifi = None
+        self.dataMap = {}
+        self.mag = {}
+        self.wifi = {}
         self.preProcess()
 
     def preProcess(self):
-        for f in self.files:
-            # TODO: read from dataClass
-            print(f)
-            raw_datas = {
-                "acc":"",
-                "dv":"",
-                "rp":"",
-                "mag":"",
-                "wifi":""
-            }
-            acc = raw_datas.acc
-            direciton = raw_datas.dv
-            real_pos = raw_datas.rp
-            mag = raw_datas.mag
+        for f in self.files[:3]:
+            print(f'Processing {f}...')
+            raw_datas = read_data_file(f)
+            acc = raw_datas.acce
+            direciton = raw_datas.ahrs
+            real_pos = raw_datas.waypoint
+            mag = raw_datas.magn
             wifi = raw_datas.wifi
 
             step_points = StepPoint(acc, direciton, real_pos).get_step_points()
@@ -413,11 +408,11 @@ class MagAndWifi:
 
                 self.wifi[bssid] = rssi_point
 
-    def getWifiKeyVal(self, rssi):
+    def getWifiKeyVal(self, bssid):
         if not self.wifi:
             self.wifiProcess()
 
-        pos = np.array(list(self.wifi[rssi].keys()))
-        vals = np.array(list(self.wifi[rssi].values()))
+        pos = np.array(list(self.wifi[bssid].keys()))
+        vals = np.array(list(self.wifi[bssid].values()))[:, 0]
 
         return pos, vals
