@@ -38,14 +38,15 @@ def task2_mag_heatMap():
 def task3_wifi_heatMap(bssid):
     datas = MagAndWifi(path_filenames)
     if not bssid:
-        bssids = ['1e:74:9c:a7:b2:e4','16:74:9c:a7:a3:c0','12:74:9c:2c:ec:7a']
+        bssids = ['1e:74:9c:a7:b2:e4',
+                  '16:74:9c:a7:a3:c0', '12:74:9c:2c:ec:7a']
     else:
         bssids = [bssid]
     for bssid in bssids:
         print("RSSI:", bssid)
         pos, val = datas.getWifiKeyVal(bssid)
         plt = visualize_heatmap(pos, val, floor_plan_filename, width_meter,
-                                height_meter, title='WIFI:' + bssid,
+                                height_meter, title='WIFI_' + bssid,
                                 dir=wifi_image_save_dir, show=True, save=True)
         plt.clf()
         plt.close()
@@ -90,5 +91,3 @@ if __name__ == "__main__":
         task2_mag_heatMap()
     elif task == 3:
         task3_wifi_heatMap(args.bssid)
-
-

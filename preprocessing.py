@@ -2,6 +2,7 @@ import numpy as np
 import scipy.signal as signal
 from io_f import read_data_file
 
+
 class StepPoint:
     def __init__(self, accelerate_value, direction_vector, real_pos):
         self.acc = accelerate_value
@@ -53,17 +54,21 @@ class StepPoint:
             f_acci_m, zf = signal.lfilter(fb, fa, [acci_m], zi=zf)
             f_acci_m = f_acci_m[0]
 
-            acc_binarys, acc_m_pre, acc_std, acc_m_win = self.update_acc_binarys(f_acci_m, acc_m_win, acc_binarys, acc_m_pre)
+            acc_binarys, acc_m_pre, acc_std, acc_m_win = self.update_acc_binarys(
+                f_acci_m, acc_m_win, acc_binarys, acc_m_pre)
             if acc_binarys[-1] == 0 and acc_binarys[-2] == 1:
-                acc_max = self.update_acc_max(acc_max, f_acci_m, acci_time, state)
+                acc_max = self.update_acc_max(
+                    acc_max, f_acci_m, acci_time, state)
                 state = 1
 
             flag = False
             if acc_binarys[-1] == 0 and acc_binarys[-2] == -1:
-                acc_min, flag, state = self.update_acc_min(acc_min, f_acci_m, acci_time, state)
+                acc_min, flag, state = self.update_acc_min(
+                    acc_min, f_acci_m, acci_time, state)
             if flag:
                 times = np.append(times, acci_time)
-                step_accs = np.append(step_accs, [[acci_time, acc_max[1], acc_min[1], acc_std ** 2]], axis=0)
+                step_accs = np.append(
+                    step_accs, [[acci_time, acc_max[1], acc_min[1], acc_std ** 2]], axis=0)
 
         return times, step_accs
 
@@ -110,9 +115,11 @@ class StepPoint:
             start, end = rp[i], rp[i + 1]
             adjust_step_point = self.adjust_point(step_points[i], start, end)
             if i > 0:
-                adjust_step_points = np.append(adjust_step_points, adjust_step_point[1:], axis=0)
+                adjust_step_points = np.append(
+                    adjust_step_points, adjust_step_point[1:], axis=0)
             else:
-                adjust_step_points = np.append(adjust_step_points, adjust_step_point, axis=0)
+                adjust_step_points = np.append(
+                    adjust_step_points, adjust_step_point, axis=0)
 
         return adjust_step_points
 
@@ -139,11 +146,13 @@ class StepPoint:
         k = np.zeros(size)
         k[0] = k0
         for i in range(times.shape[0]):
-            k[i + 1] = np.max([(para_a0 + para_a1 / times[i] + para_a2 * step_acc[i, 3]), kmin])
+            k[i + 1] = np.max([(para_a0 + para_a1 / times[i] +
+                                para_a2 * step_acc[i, 3]), kmin])
             k[i + 1] = np.min([k[i + 1], kmax]) * (k0 / kmin)
 
         # cal step len
-        step_lens[:, 1] = np.max([(step_acc[:, 1] - step_acc[:, 2]), np.ones((size,))], axis=0) ** 0.25 * k
+        step_lens[:, 1] = np.max(
+            [(step_acc[:, 1] - step_acc[:, 2]), np.ones((size,))], axis=0) ** 0.25 * k
 
         return step_lens
 
@@ -154,8 +163,10 @@ class StepPoint:
 
         for i in range(size):
             step_points[i, 0] = step_lengths[i, 0]
-            step_points[i, 1] = -step_lengths[i, 1] * np.sin(step_directions[i, 1])
-            step_points[i, 2] = step_lengths[i, 1] * np.cos(step_directions[i, 1])
+            step_points[i, 1] = -step_lengths[i, 1] * \
+                np.sin(step_directions[i, 1])
+            step_points[i, 2] = step_lengths[i, 1] * \
+                np.cos(step_directions[i, 1])
 
         return step_points
 
@@ -189,11 +200,11 @@ class StepPoint:
         acc_m_pre = acc_mf_detrend
 
         if acc_mf_detrend > peak:
-            return np.delete(np.append(acc_binarys, [1]), 0), acc_m_pre, acc_std,acc_m_win
+            return np.delete(np.append(acc_binarys, [1]), 0), acc_m_pre, acc_std, acc_m_win
         if acc_mf_detrend < valley:
-            return np.delete(np.append(acc_binarys, [-1]), 0), acc_m_pre, acc_std,acc_m_win
+            return np.delete(np.append(acc_binarys, [-1]), 0), acc_m_pre, acc_std, acc_m_win
 
-        return np.delete(np.append(acc_binarys, [0]), 0), acc_m_pre, acc_std,acc_m_win
+        return np.delete(np.append(acc_binarys, [0]), 0), acc_m_pre, acc_std, acc_m_win
 
     @staticmethod
     def update_acc_max(acc_max, f_acci_m, acci_time, state):
@@ -319,14 +330,17 @@ class StepPoint:
         Bp = pos[-1, 1:3]
         new_xy = np.append(np.zeros((0, 2)), [A], 0)
 
-        angle_BpAB = np.arctan2(Bp[1] - A[1], Bp[0] - A[0]) - np.arctan2(B[1] - A[1], B[0] - A[0])
+        angle_BpAB = np.arctan2(
+            Bp[1] - A[1], Bp[0] - A[0]) - np.arctan2(B[1] - A[1], B[0] - A[0])
         AB = np.sqrt(np.sum((B - A) ** 2))
         ABp = np.sqrt(np.sum((Bp - A) ** 2))
 
         for i in range(1, np.size(old, 0)):
-            angle_CAX = np.arctan2(old[i, 1] - A[1], old[i, 0] - A[0]) - angle_BpAB
+            angle_CAX = np.arctan2(
+                old[i, 1] - A[1], old[i, 0] - A[0]) - angle_BpAB
             AC = np.sqrt(np.sum((old[i, :] - A) ** 2)) * AB / ABp
-            delta_C = np.array([AC * np.cos(angle_CAX), AC * np.sin(angle_CAX)])
+            delta_C = np.array(
+                [AC * np.cos(angle_CAX), AC * np.sin(angle_CAX)])
             new_xy = np.append(new_xy, [delta_C + A], 0)
 
         return np.column_stack((pos[:, 0], new_xy))
@@ -343,7 +357,7 @@ class MagAndWifi:
         self.preProcess()
 
     def preProcess(self):
-        for f in self.files[:3]:
+        for f in self.files:
             print(f'Processing {f}...')
             raw_datas = read_data_file(f)
             acc = raw_datas.acce
@@ -358,7 +372,7 @@ class MagAndWifi:
                 self.dataToMap(wifi, step_points, "wifi")
 
     def dataToMap(self, datas, step_points, name):
-        time_split_data = StepPoint.time_split_data(datas, datas[:,0])
+        time_split_data = StepPoint.time_split_data(datas, datas[:, 0])
         for data in time_split_data:
             idx = np.argmin(np.abs(step_points[:, 0] - float(data[0, 0])))
             point_key = tuple(step_points[idx, 1:3])
@@ -369,7 +383,8 @@ class MagAndWifi:
                     'wifi': np.zeros((0, 5)),
                 }
 
-            self.dataMap[point_key][name] = np.append(self.dataMap[point_key][name], data, axis=0)
+            self.dataMap[point_key][name] = np.append(
+                self.dataMap[point_key][name], data, axis=0)
 
     def magProcess(self):
         for key in self.dataMap:
